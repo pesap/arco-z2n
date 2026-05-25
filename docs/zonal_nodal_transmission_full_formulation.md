@@ -1,62 +1,27 @@
 # General Zonal-to-Nodal Capacity Allocation and Transmission Realization Formulation
 
-## Contents
-
-- [Purpose and Modeling Scope](#purpose-and-modeling-scope)
-  - [Modeling Assumptions](#modeling-assumptions)
-- [Overall Architecture](#overall-architecture)
-- [Pre-Optimization Workflow](#pre-optimization-workflow)
-  - [Step 1: Normalize Zonal Fleet Targets](#step-1-normalize-zonal-fleet-targets)
-  - [Step 2: Build the Existing-Resource Block Table](#step-2-build-the-existing-resource-block-table)
-  - [Step 3: Build New Capacity Blocks](#step-3-build-new-capacity-blocks)
-  - [Step 4: Create Technology-Mapping Coefficients](#step-4-create-technology-mapping-coefficients)
-  - [Step 5: Generate Eligible Bus Sets](#step-5-generate-eligible-bus-sets)
-  - [Step 6: Create Candidate Terminal Nodes](#step-6-create-candidate-terminal-nodes)
-  - [Step 7: Create Candidate Transmission Projects](#step-7-create-candidate-transmission-projects)
-  - [Step 8: Map Existing Branches to Area Interfaces](#step-8-map-existing-branches-to-area-interfaces)
-  - [Step 9: Interpret Area-Interchange Expansion](#step-9-interpret-area-interchange-expansion)
-  - [Step 10: Prepare PTDF and Base-Case Data](#step-10-prepare-ptdf-and-base-case-data)
-  - [Step 11: Select Operating Scenarios](#step-11-select-operating-scenarios)
-  - [Step 12: Select Objective Priority Method](#step-12-select-objective-priority-method)
-- [Optimization Model](#optimization-model)
-  - [Sets](#sets)
-  - [Parameters](#parameters)
-  - [Decision Variables](#decision-variables)
-  - [Objective Function](#objective-function)
-- [Constraints](#constraints)
-  - [1. Capacity and Fleet Constraints](#1-capacity-and-fleet-constraints)
-    - [1.1 Existing Non-Storage Retirement](#11-existing-non-storage-retirement)
-    - [1.2 Existing Storage Retirement](#12-existing-storage-retirement)
-    - [1.3 New Capacity-Block Bounds](#13-new-capacity-block-bounds)
-    - [1.4 Storage Duration Constraints](#14-storage-duration-constraints)
-    - [1.5 Final Zonal Fleet Balance](#15-final-zonal-fleet-balance)
-    - [1.6 Optional No-Churn Constraint](#16-optional-no-churn-constraint)
-  - [2. Candidate Node and Interconnection Constraints](#2-candidate-node-and-interconnection-constraints)
-  - [3. Dispatch and Storage Constraints](#3-dispatch-and-storage-constraints)
-  - [4. Transmission Realization and Network Constraints](#4-transmission-realization-and-network-constraints)
-- [Transmission Topology](#transmission-topology-conceptual-diagram)
-- [Optional Generator-Size Realization (MILP Extension)](#optional-generator-size-realization-milp-extension)
-- [Lexicographic Retirement and Feasibility Priority](#lexicographic-retirement-and-feasibility-priority)
-- [Post-Optimization Validation](#post-optimization-validation-and-iteration)
-- [Electrical Interpretation of Transmission Expansion](#electrical-interpretation-of-transmission-expansion)
-- [Compact Model Summary](#compact-model-summary)
-- [Appendix: Dimensionality](#appendix-variable-and-constraint-dimensionality)
-
 ## Purpose and Modeling Scope
 
-This formulation maps zonal capacity-expansion results to a nodal production-cost or power-flow case. It supports:
+Capacity-expansion models (CEMs) operate on aggregated zones, producing fleet targets $T_{a,i,d}$ that specify how much capacity of each technology belongs in each area. This formulation solves the downstream problem: given those zonal targets, determine where to site each megawatt on the actual transmission network, which existing units to retire, and whether transmission upgrades are needed to make the resulting fleet physically feasible.
 
-| # | Feature |
-|---|---------|
-| (i) | Existing generators with retirement or retention decisions |
-| (ii) | New supply-curve capacity blocks |
-| (iii) | Fixed or bounded investment blocks without supply-curve data |
-| (iv) | Storage technologies with both power capacity (MW) and energy capacity (MWh) |
-| (v) | Disabled, inactive, unavailable, and must-keep generator status logic |
-| (vi) | Bus-voltage and interconnection-headroom preferences |
-| (vii) | PTDF-based branch-flow feasibility |
-| (viii) | Area-interchange expansion from a zonal capacity-expansion model |
-| (ix) | Optional realization of area-interchange expansion through candidate nodal terminal nodes and candidate transmission projects |
+The formulation bridges two modeling resolutions:
+
+- *From zones to nodes.* A zonal target $T_{a,i,d}$ is a scalar; the nodal allocation $x_{m,b,d}$ places capacity at specific buses $b$ within area $a$.
+- *From capacity to power flow.* Building capacity at a bus changes injections, which change branch flows via the PTDF matrix. The formulation checks whether the network can accommodate the fleet.
+
+It supports:
+
+| Capability | Domain |
+|-----------|--------|
+| Existing generators with retirement or retention decisions | Fleet |
+| New supply-curve capacity blocks | Fleet |
+| Fixed or bounded investment blocks without supply-curve data | Fleet |
+| Storage technologies with power (MW) and energy (MWh) capacity | Fleet |
+| Disabled, inactive, unavailable, and must-keep generator status logic | Fleet |
+| Bus-voltage and interconnection-headroom preferences | Siting |
+| PTDF-based branch-flow feasibility | Network |
+| Area-interchange expansion from a zonal capacity-expansion model | Transmission |
+| Optional realization of area-interchange expansion through candidate nodal terminal nodes and candidate transmission projects | Transmission |
 
 ### Modeling Assumptions
 
@@ -68,12 +33,14 @@ This formulation maps zonal capacity-expansion results to a nodal production-cos
 
    > Area-interchange expansion is not automatically a physical nodal branch.
 
-   A zonal interface expansion may be represented nodally in one of three ways:
-   - (a) an aggregate interface constraint only;
-   - (b) a mapped rating uprate on existing branches or corridors;
-   - (c) a candidate controllable transfer or HVDC-like project with known terminals.
+   A capacity-expansion model may decide that interface $k$ between areas needs $\Delta H^{\text{CEM}}_k$ MW of additional transfer capability. This is a scalar decision: the CEM does not specify which wires carry the new flow, nor where they connect. The nodal model must decide how (or whether) to realize this expansion physically.
 
-   A true new AC branch changes the network admittance matrix and therefore changes the PTDF matrix. Such a branch should not be added inside a fixed-PTDF LP unless the topology is externally rebuilt and the PTDFs are recomputed.
+   There are three realization paths:
+   - (a) an aggregate interface constraint only (no physical wires, just raise the limit);
+   - (b) a mapped rating uprate on existing branches or corridors (increase thermal rating of wires already in the PTDF matrix);
+   - (c) a candidate controllable transfer or HVDC-like project with known terminals (add a controllable source-sink pair without changing the AC topology).
+
+   A true new AC branch is different. An AC branch adds a new row and column to the network admittance matrix $Y_{\text{bus}}$. Since the PTDF matrix $\Phi$ is derived from $Y_{\text{bus}}$ via $\Phi = B_f B_{\text{bus}}^{-1}$ (where $B_f$ is the branch susceptance matrix and $B_{\text{bus}}$ is the bus susceptance matrix), changing $Y_{\text{bus}}$ changes every element of $\Phi$. A fixed-PTDF LP cannot capture this. The correct procedure is: solve the LP with candidate controllable projects, then rebuild the topology externally with the selected AC branches, recompute $\Phi$, and rerun.
 
 ---
 
@@ -181,8 +148,18 @@ Define existing capacity: $\overline{X}^{\text{ex}}_{m,d}$
 *Resource status classification:*
 
 ```math
-\sigma_m \in \{ \text{available}, \text{inactive}, \text{unavailable_recoverable}, \text{unavailable_forced}, \text{must_keep} \}
+\sigma_m \in \{\mathrm{A},\ \mathrm{I},\ \mathrm{R},\ \mathrm{F},\ \mathrm{K}\}
 ```
+
+where the symbols denote:
+
+| Symbol | Status | Description |
+|--------|--------|-------------|
+| $\mathrm{A}$ | Available | Fully operational, may be retired at discretion |
+| $\mathrm{I}$ | Inactive | Not currently operating, may be reactivated |
+| $\mathrm{R}$ | Unavailable, recoverable | Temporarily unavailable, can be brought back at cost |
+| $\mathrm{F}$ | Unavailable, forced | Permanently unavailable; must be removed from the fleet |
+| $\mathrm{K}$ | Must keep | Required to remain in the fleet at full capacity |
 
 *Status-to-bounds translation:*
 
@@ -190,13 +167,13 @@ Define existing capacity: $\overline{X}^{\text{ex}}_{m,d}$
 \underline{Z}_{m,d} \leq x_{m,b_m,d} \leq \overline{Z}_{m,d}
 ```
 
-| Status $\sigma_m$ | $\underline{Z}_{m,d}$ | $\overline{Z}_{m,d}$ | Interpretation |
-|---|---|---|---|
-| `available` | $0$ | $\overline{X}^{\text{ex}}_{m,d}$ | Full flexibility: retain 0-100% |
-| `inactive` | $0$ | $\overline{X}^{\text{ex}}_{m,d}$ | Same as available (distinguished for penalty/priority) |
-| `unavailable\_recoverable` | $0$ | $\overline{X}^{\text{ex}}_{m,d}$ | Can be recovered at cost |
-| `unavailable\_forced` | $0$ | $0$ | Forced to zero physically unavailable |
-| `must\_keep` | $\overline{X}^{\text{ex}}_{m,d}$ | $\overline{X}^{\text{ex}}_{m,d}$ | Must retain 100% |
+| $\sigma_m$ | $\underline{Z}_{m,d}$ | $\overline{Z}_{m,d}$ |
+|:---:|:---:|:---:|
+| $\mathrm{A}$ | $0$ | $\overline{X}^{\text{ex}}_{m,d}$ |
+| $\mathrm{I}$ | $0$ | $\overline{X}^{\text{ex}}_{m,d}$ |
+| $\mathrm{R}$ | $0$ | $\overline{X}^{\text{ex}}_{m,d}$ |
+| $\mathrm{F}$ | $0$ | $0$ |
+| $\mathrm{K}$ | $\overline{X}^{\text{ex}}_{m,d}$ | $\overline{X}^{\text{ex}}_{m,d}$ |
 
 > [!CAUTION]
 > Forced-unavailable resources are removed through hard bounds, not merely through objective penalties.
@@ -765,7 +742,7 @@ The full weighted LP objective is:
 x_{m,b_m,P} + r_{m,P} = \overline{X}^{\text{ex}}_{m,P} \qquad \forall m \in \mathcal{M}^{\text{ex}} \setminus \mathcal{M}^{\text{stor}}
 ```
 
-*Interpretation:* For each existing non-storage block, the sum of retained capacity and retired capacity must equal the original capacity. This is a hard accounting identity.
+*Interpretation:* Each existing block $m$ starts with $\overline{X}^{\text{ex}}_{m,P}$ MW of nameplate capacity. The model chooses how much to retain ($x_{m,b_m,P}$) and how much to retire ($r_{m,P}$). The sum is forced to equal the original capacity, so every megawatt is either kept or removed. Without this identity, the model could silently discard capacity without accounting for it.
 
 *Retention bounds:*
 
@@ -773,7 +750,7 @@ x_{m,b_m,P} + r_{m,P} = \overline{X}^{\text{ex}}_{m,P} \qquad \forall m \in \mat
 \underline{Z}_{m,P} \leq x_{m,b_m,P} \leq \overline{Z}_{m,P} \qquad \forall m \in \mathcal{M}^{\text{ex}} \setminus \mathcal{M}^{\text{stor}}
 ```
 
-*Interpretation:* Retained capacity is bounded by the status-derived limits from Step 2. The lower bound enforces must-keep; the upper bound enforces physical limits.
+*Interpretation:* Retained capacity is clamped between status-derived bounds from [Step 2](#step-2-build-the-existing-resource-block-table). A lower bound of $\overline{X}^{\text{ex}}_{m,d}$ (as for $\sigma_m = \mathrm{K}$) forces full retention; an upper bound of $0$ (as for $\sigma_m = \mathrm{F}$) forces complete removal. Intermediate statuses allow the optimizer to choose.
 
 #### 1.2 Existing Storage Retirement
 
@@ -946,7 +923,7 @@ p_{m,b,t} + c^{\text{curt}}_{m,b,t} = A_{m,t} x_{m,b,P} \qquad \forall m \in \ma
 0 \leq p^{\text{ch}}_{m,b,t} \leq x_{m,b,P} \qquad \forall m \in \mathcal{M}^{\text{stor}},\ b \in \mathcal{B}_m,\ t \in \mathcal{T}
 ```
 
-*Interpretation:* Both charge and discharge are bounded by the installed power capacity. Storage can charge or discharge up to its full MW rating. The formulation does not explicitly prohibit simultaneous charge and discharge (that requires integer variables).
+*Interpretation:* Both charge and discharge are independently bounded by the installed power capacity $x_{m,b,P}$. In the LP relaxation, nothing prevents the solver from simultaneously charging and discharging in the same period because both are separate nonnegative variables. A physical battery cannot do this; the LP may exploit it to absorb surplus generation at no net energy cost, inflating the apparent value of storage. MILP extensions with binary commitment variables are needed to enforce mutual exclusion.
 
 *Energy bound:*
 
@@ -954,7 +931,7 @@ p_{m,b,t} + c^{\text{curt}}_{m,b,t} = A_{m,t} x_{m,b,P} \qquad \forall m \in \ma
 0 \leq e_{m,b,t} \leq x_{m,b,E} \qquad \forall m \in \mathcal{M}^{\text{stor}},\ b \in \mathcal{B}_m,\ t \in \mathcal{T}
 ```
 
-*Interpretation:* The stored energy cannot exceed the installed energy capacity. This is the LP relaxation of SOC bounds.
+*Interpretation:* The stored energy is bounded above by the installed energy capacity $x_{m,b,E}$ and below by zero. This is the LP relaxation of the state-of-charge (SOC) constraint. In a full MILP formulation, SOC would be bounded between a minimum and maximum fraction of energy capacity, but here the LP treats zero as the floor, which may overestimate usable energy.
 
 *Energy balance (chronological):*
 
@@ -1010,7 +987,7 @@ p^{\text{dis}}_{m,b,t} \geq \beta^{\text{stor}}_{m,t} x_{m,b,P} \qquad \forall m
 -y_e \leq h_{e,t} \leq y_e \qquad \forall e \in \mathcal{E},\ t \in \mathcal{T}
 ```
 
-*Interpretation:* The net transfer on a candidate project is bounded by its installed capacity in both directions. This models an HVDC link where power can flow either direction with equal capability.
+*Interpretation:* A candidate project $e$ models a controllable link: power $h_{e,t}$ can flow in either direction up to the installed capacity $y_e$. This is the abstraction for an HVDC line, a phase-shifting transformer, or any device whose flow setpoint is independent of the AC network state. The key property is that $h_{e,t}$ is a decision variable, not a consequence of Kirchhoff's laws: the LP chooses the flow, subject only to the capacity bound.
 
 *Flow bound: direction-specific:*
 
@@ -1146,7 +1123,7 @@ F_{\ell,t} \leq \overline{F}^0_\ell + y^{\text{up}}_\ell + s^+_{\ell,t} \qquad \
 F^{\text{ex,int}}_{k,t} = \sum_{\ell \in \mathcal{L}_k} \sigma_{k\ell} F_{\ell,t}
 ```
 
-*Interpretation:* This aggregates branch flows on all branches crossing interface $k$, properly orienting them.
+*Interpretation:* The orientation coefficients $\sigma_{k\ell} \in \{-1, 0, +1\}$ align each branch flow with the interface direction. For example, if interface $k$ is defined as flow from Area A to Area B, a branch oriented A $\to$ B gets $\sigma_{k\ell} = +1$, a branch oriented B $\to$ A gets $\sigma_{k\ell} = -1$, and branches not crossing the interface get $0$. This ensures that the aggregated interface flow has a consistent sign convention.
 
 *Candidate-project interface flow:*
 
@@ -1180,7 +1157,7 @@ F^{\text{int}}_{k,t} \leq \overline{H}^0_k + H^{\text{add}}_k + q^+_{k,t} \qquad
 -F^{\text{int}}_{k,t} \leq \overline{H}^0_k + H^{\text{add}}_k + q^-_{k,t} \qquad \forall k \in \mathcal{K}, t \in \mathcal{T}
 ```
 
-*Interpretation:* Interface flow in either direction is limited by the base limit plus realized expansion. This is the "aggregate interface constraint" path for representing transmission expansion.
+*Interpretation:* The interface flow in either direction is limited by the original interface rating $\overline{H}^0_k$ plus any realized expansion $H^{\text{add}}_k$. Unlike individual branch thermal limits, interface limits represent operational constraints (stability margins, contractual path ratings, or N-1 contingency limits) that are enforced on the aggregate flow across all branches in a corridor. Slack variables $q^\pm_{k,t}$ allow the LP to violate these limits at penalty cost when the alternative is load shedding or generation spill.
 
 ---
 
@@ -1278,26 +1255,26 @@ See the zonal fleet balance constraint ([Section 1.5](#15-final-zonal-fleet-bala
 See existing retirement constraints ([Section 1.1](#11-existing-non-storage-retirement)) and status bounds ([Step 2](#step-2-build-the-existing-resource-block-table)).
 
 ```math
-\min \sum_{m:\ \sigma_m = \text{unavailable_recoverable}} x_{m,b_m,P}
+\min \sum_{m:\ \sigma_m = \mathrm{R}} x_{m,b_m,P}
 ```
 
-*What this drives:* Retires as much "unavailable but recoverable" capacity as possible before touching healthy fleet.
+*What this drives:* Retires as much $\sigma_m = \mathrm{R}$ capacity as possible before touching the healthy fleet.
 
 ### Stage 3: Minimize Retained Inactive Capacity
 
 ```math
-\min \sum_{m:\ \sigma_m = \text{inactive}} x_{m,b_m,P}
+\min \sum_{m:\ \sigma_m = \mathrm{I}} x_{m,b_m,P}
 ```
 
-*What this drives:* Retires inactive capacity before retiring active capacity.
+*What this drives:* Retires $\sigma_m = \mathrm{I}$ capacity before retiring $\sigma_m = \mathrm{A}$ capacity.
 
 ### Stage 4: Minimize Retained High-Operating-Cost Capacity
 
 ```math
-\min \sum_{m:\ \sigma_m = \text{available}} C^{\text{op}}_m x_{m,b_m,P}
+\min \sum_{m:\ \sigma_m = \mathrm{A}} C^{\text{op}}_m x_{m,b_m,P}
 ```
 
-*What this drives:* Among available resources, retires the ones with highest operating cost first.
+*What this drives:* Among $\sigma_m = \mathrm{A}$ resources, retires those with the highest operating cost first.
 
 ### Stage 5: Minimize Transmission and Interface Violations
 
@@ -1334,7 +1311,7 @@ flowchart LR
 
 ## Post-Optimization Validation and Iteration
 
-After solving, perform these checks in order:
+The LP solution is an allocation and dispatch plan. Before accepting it, verify that the LP did not exploit any relaxation to produce a physically invalid result. The checks below are ordered from most to least critical.
 
 | # | Check | What to look for |
 |---|-------|-----------------|
@@ -1353,31 +1330,27 @@ After solving, perform these checks in order:
 
 ## Electrical Interpretation of Transmission Expansion
 
+Transmission expansion takes one of three forms in this formulation. The critical distinction is whether the expansion changes the PTDF matrix $\Phi$.
+
 ### Existing Branch Uprate (LP-safe)
+
+The thermal rating of branch $\ell$ is increased from $\overline{F}^0_\ell$ to $\overline{F}^0_\ell + y^{\text{up}}_\ell$. The admittance of the branch does not change, so $\Phi$ is unchanged. This is the simplest and safest form of transmission expansion in a fixed-PTDF LP.
 
 ```math
 \overline{F}^0_\ell + y^{\text{up}}_\ell
 ```
 
-Electrically consistent because the topology and PTDF do not change; only the thermal rating increases.
-
 ### Controllable Candidate Transfer (LP-safe)
+
+A candidate project adds a controllable injection-withdrawal pair at known terminals. The flow $h_{e,t}$ is a free variable bounded by $\pm y_e$. Because the flow is chosen by the optimizer rather than dictated by Kirchhoff's laws, the AC network topology and PTDF matrix are unchanged. This models HVDC links, phase-shifting transformers, or any device with independent flow control.
 
 ```math
 -y_e \leq h_{e,t} \leq y_e
 ```
 
-With injections and withdrawals at known terminals. This is linear and electrically meaningful for controllable transfers (HVDC, phase-shifting transformers, etc.).
-
 ### True New AC Branch (not LP-safe)
 
-A true new AC branch changes the network admittance matrix and therefore the PTDF matrix. It should not be added inside the fixed-PTDF LP. The correct process is:
-
-1. (i) Solve the LP to select candidate terminals and candidate branches.
-2. (ii) Build the expanded network externally.
-3. (iii) Assign electrical parameters (impedance, rating).
-4. (iv) Recompute PTDFs.
-5. (v) Rerun the allocation model.
+Adding a new AC branch changes $Y_{\text{bus}}$, which changes every entry of $\Phi = B_f B_{\text{bus}}^{-1}$. If the LP selects an AC branch, the resulting PTDF matrix is invalid for that topology. The correct workflow is iterative: (i) solve the LP using controllable candidate projects as proxies for the desired AC branches; (ii) identify which projects were selected; (iii) add those branches to the network model with proper impedance and rating parameters; (iv) recompute the PTDF matrix; (v) rerun the LP. Repeat until the set of selected branches stabilizes.
 
 ---
 
