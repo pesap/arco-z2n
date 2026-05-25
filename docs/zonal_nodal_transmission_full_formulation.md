@@ -181,7 +181,7 @@ Define existing capacity: $\overline{X}^{\text{ex}}_{m,d}$
 *Resource status classification:*
 
 ```math
-\sigma_m \in \{ \text{available}, \text{inactive}, \text{unavailable\_recoverable}, \text{unavailable\_forced}, \text{must\_keep} \}
+\sigma_m \in \{ \text{available}, \text{inactive}, \text{unavailable_recoverable}, \text{unavailable_forced}, \text{must_keep} \}
 ```
 
 *Status-to-bounds translation:*
@@ -1278,7 +1278,7 @@ See the zonal fleet balance constraint ([Section 1.5](#15-final-zonal-fleet-bala
 See existing retirement constraints ([Section 1.1](#11-existing-non-storage-retirement)) and status bounds ([Step 2](#step-2-build-the-existing-resource-block-table)).
 
 ```math
-\min \sum_{m:\ \sigma_m = \text{unavailable\_recoverable}} x_{m,b_m,P}
+\min \sum_{m:\ \sigma_m = \text{unavailable_recoverable}} x_{m,b_m,P}
 ```
 
 *What this drives:* Retires as much "unavailable but recoverable" capacity as possible before touching healthy fleet.
@@ -1388,66 +1388,66 @@ The core inequalities and equalities are:
 ### Fleet Constraints
 
 > *Zonal Fleet Balance* [⭧](#eq-zonal-balance)
->
-> ```math
-> \sum_{m,b} H_{m,a,i,d} x_{m,b,d} + u^-_{a,i,d} - u^+_{a,i,d} = T_{a,i,d}
-> ```
+
+```math
+\sum_{m,b} H_{m,a,i,d} x_{m,b,d} + u^-_{a,i,d} - u^+_{a,i,d} = T_{a,i,d}
+```
 
 > *New Block Bounds* [⭧](#eq-new-block-bounds)
->
-> ```math
-> \underline{X}_{m,d} \leq \sum_b x_{m,b,d} \leq \overline{X}_{m,d}
-> ```
+
+```math
+\underline{X}_{m,d} \leq \sum_b x_{m,b,d} \leq \overline{X}_{m,d}
+```
 
 > *Existing Retirement Balance* [⭧](#eq-existing-retirement)
->
-> ```math
-> x_{m,b_m,d} + r_{m,d} = \overline{X}^{\text{ex}}_{m,d}
-> ```
+
+```math
+x_{m,b_m,d} + r_{m,d} = \overline{X}^{\text{ex}}_{m,d}
+```
 
 ### Network Constraints
 
 > *Nodal Injection* [⭧](#eq-nodal-injection)
->
-> ```math
-> P^+_{b,t} = \text{generation} + \text{storage discharge} - \text{storage charge} + \text{candidate transfer} - \text{load} + \text{shed} - \text{spill}
-> ```
+
+```math
+P^+_{b,t} = \text{generation} + \text{storage discharge} - \text{storage charge} + \text{candidate transfer} - \text{load} + \text{shed} - \text{spill}
+```
 
 > *PTDF-Mapped Injection*
->
-> ```math
-> \widetilde{P}_{b,t} = P^+_{b,t} + \sum_{c:\ \beta_c = b} P^+_{c,t}
-> ```
+
+```math
+\widetilde{P}_{b,t} = P^+_{b,t} + \sum_{c:\ \beta_c = b} P^+_{c,t}
+```
 
 > *Branch Flow* [⭧](#eq-ptdf-flow)
->
-> ```math
-> F_{\ell,t} = F^0_{\ell,t} + \sum_b \Phi_{\ell,b} \left(\widetilde{P}_{b,t} - P^0_{b,t}\right)
-> ```
+
+```math
+F_{\ell,t} = F^0_{\ell,t} + \sum_b \Phi_{\ell,b} \left(\widetilde{P}_{b,t} - P^0_{b,t}\right)
+```
 
 > *Branch Thermal Limits* [⭧](#eq-branch-thermal)
->
-> ```math
-> -\overline{F}^0_\ell - y^{\text{up}}_\ell - s^-_{\ell,t} \leq F_{\ell,t} \leq \overline{F}^0_\ell + y^{\text{up}}_\ell + s^+_{\ell,t}
-> ```
+
+```math
+-\overline{F}^0_\ell - y^{\text{up}}_\ell - s^-_{\ell,t} \leq F_{\ell,t} \leq \overline{F}^0_\ell + y^{\text{up}}_\ell + s^+_{\ell,t}
+```
 
 > *CEM Expansion Realization* [⭧](#eq-cem-realization)
->
-> ```math
-> \sum_{e \in \mathcal{E}_k} \alpha_{k,e} y_e + \sum_{\ell \in \mathcal{L}_k} \gamma_{k\ell} y^{\text{up}}_\ell + w^-_k - w^+_k = \Delta H^{\text{CEM}}_k
-> ```
+
+```math
+\sum_{e \in \mathcal{E}_k} \alpha_{k,e} y_e + \sum_{\ell \in \mathcal{L}_k} \gamma_{k\ell} y^{\text{up}}_\ell + w^-_k - w^+_k = \Delta H^{\text{CEM}}_k
+```
 
 > *Total Interface Flow* [⭧](#eq-interface-flow)
->
-> ```math
-> F^{\text{int}}_{k,t} = \sum_{\ell \in \mathcal{L}_k} \sigma_{k\ell} F_{\ell,t} + \sum_{e \in \mathcal{E}_k} \sigma_{k,e} h_{e,t}
-> ```
+
+```math
+F^{\text{int}}_{k,t} = \sum_{\ell \in \mathcal{L}_k} \sigma_{k\ell} F_{\ell,t} + \sum_{e \in \mathcal{E}_k} \sigma_{k,e} h_{e,t}
+```
 
 > *Expanded Interface Limits* [⭧](#eq-interface-limits)
->
-> ```math
-> -\left(\overline{H}^0_k + H^{\text{add}}_k\right) - q^-_{k,t} \leq F^{\text{int}}_{k,t} \leq \overline{H}^0_k + H^{\text{add}}_k + q^+_{k,t}
-> ```
+
+```math
+-\left(\overline{H}^0_k + H^{\text{add}}_k\right) - q^-_{k,t} \leq F^{\text{int}}_{k,t} \leq \overline{H}^0_k + H^{\text{add}}_k + q^+_{k,t}
+```
 
 ---
 
