@@ -1,0 +1,36 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format check
+        entry: uv run --locked ruff format --check
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --locked ruff check
+        language: system
+        types_or: [python, pyi]
+      - id: prettier
+        name: prettier check
+        entry: npx --yes prettier@3.8.3 --check --ignore-unknown
+        language: system
+        types_or: [json, yaml, markdown]
+      - id: pytest
+        name: pytest
+        entry: uv run --locked pytest -q --maxfail=1
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: forge-update-check
+        name: forge managed infrastructure check
+        entry: forge update --path . --check
+        language: system
+        pass_filenames: false
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.4
+    hooks:
+      - id: uv-lock

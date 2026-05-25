@@ -1,0 +1,32 @@
+set dotenv-load := false
+
+default:
+    @just --list
+
+sync:
+    uv sync --all-groups
+
+hooks-install:
+    uv run prek install
+
+format:
+    uv run ruff format .
+    npx --yes prettier@3.8.3 --write --ignore-unknown .
+
+lint:
+    uv run ruff check --fix .
+
+test:
+    uv run pytest -q
+
+build:
+    uv build
+
+verify:
+    uv lock --check
+    uv run --locked ruff format --check .
+    uv run --locked ruff check .
+    uv run --locked prek run --all-files
+    forge update --path . --check
+    uv run --locked pytest --tb=short
+    uv build --locked
