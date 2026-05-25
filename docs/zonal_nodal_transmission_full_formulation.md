@@ -675,7 +675,7 @@ Forward flow is positive: $h_{e,t} > 0$ means power flows from origin $o_e$ to r
 The full weighted LP objective is:
 
 ```math
-\begin{aligned}
+\begin{align*}
 \min \quad
 & \underbrace{\sum_{m \in \mathcal{M}^{\text{new}}} \sum_{b \in \mathcal{B}_m} \sum_{d \in \mathcal{D}_{i_m}} c^{\text{cap}}_{m,b,d} x_{m,b,d}}_{\text{(1) Capacity allocation cost}}
 \\
@@ -704,7 +704,7 @@ The full weighted LP objective is:
 & + \underbrace{\sum_{t \in \mathcal{T}} \omega_t \sum_{k \in \mathcal{K}} \Pi^I_k \left(q^+_{k,t} + q^-_{k,t}\right)}_{\text{(13) Weighted interface violation penalties}}
 \\
 & + \underbrace{\sum_{t \in \mathcal{T}} \omega_t \sum_{b \in \mathcal{B}^+} \left( VOLL_b \ell^{\text{shed}}_{b,t} + VOSP_b \ell^{\text{spill}}_{b,t} \right)}_{\text{(14) Load-shed and spill penalties}}
-\end{aligned}
+\end{align*}
 ```
 
 **Implications of each term:**
@@ -1034,7 +1034,7 @@ A^E_{b,e} = \begin{cases} -1, & b = o_e \text{ (origin: withdrawal)} \\ +1, & b 
 For every extended node $b \in \mathcal{B}^+$:
 
 ```math
-\begin{aligned}
+\begin{align*}
 P^+_{b,t} = &
 \sum_{m \in \mathcal{M}\setminus\mathcal{M}^{\text{stor}}} \sum_{\substack{b' \in \mathcal{B}_m \\ b' = b}} p_{m,b',t}
 \\
@@ -1044,7 +1044,7 @@ P^+_{b,t} = &
 - L_{b,t}
 + \ell^{\text{shed}}_{b,t}
 - \ell^{\text{spill}}_{b,t}
-\end{aligned}
+\end{align*}
 ```
 
 *Terminology:*
